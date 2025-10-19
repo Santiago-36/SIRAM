@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIRAM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        .fade-in {
+            animation: fadeIn 0.5s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .grade-red { background-color: #fee2e2; color: #991b1b; font-weight: bold; }
+        .grade-yellow { background-color: #fef3c7; color: #92400e; font-weight: bold; }
+        .grade-green { background-color: #d1fae5; color: #065f46; font-weight: bold; }
+        .header-green { background-color: #2d5016; }
+        .footer-gray { background-color: #3a3a3a; }
+    </style>
+</head>
+<body class="bg-white">
+    <div id="app"></div>
+
+    <script>
+        const state = {
+            currentPage: 'role-selection',
+            userRole: null,
+            userName: '',
+            selectedCourse: null,
+            studentCourseCode: '',
+            expandedBox: null,
+            courseData: {
+                '4035-T05': { examDate: '25 de Octubre', examTopic: 'Derivadas e integrales', quicesCompleted: 6, quicesTotal: 8, quicesNext: '22 de Octubre', exercisesBank: 150 },
+                '4035-T04': { examDate: '26 de Octubre', examTopic: 'Límites y continuidad', quicesCompleted: 5, quicesTotal: 8, quicesNext: '23 de Octubre', exercisesBank: 120 },
+                '4035-T02': { examDate: '27 de Octubre', examTopic: 'Funciones', quicesCompleted: 7, quicesTotal: 8, quicesNext: '24 de Octubre', exercisesBank: 180 }
+            },
+            students: [
+                { id: 1, nombre: 'Ahumada De la Hoz Nicolle Alexa', codigo: '2021115001', curso: '4035-T05', corte1: 4.2, obs1: '', corte2: 4.5, obs2: '', corte3: 4.3, obs3: '' },
+                { id: 2, nombre: 'Becerra Pereira Paula Andrea', codigo: '2021115002', curso: '4035-T05', corte1: 3.8, obs1: '', corte2: 3.9, obs2: '', corte3: 4.0, obs3: '' },
+                { id: 3, nombre: 'Caicedo Zabaleta Lizeth Carolina', codigo: '2021115003', curso: '4035-T04', corte1: 4.5, obs1: '', corte2: 4.7, obs2: '', corte3: 4.8, obs3: '' },
+                { id: 4, nombre: 'Cantillo Bastidas Santiago', codigo: '2021115004', curso: '4035-T04', corte1: 2.5, obs1: '', corte2: 2.6, obs2: '', corte3: 2.7, obs3: '' },
+                { id: 5, nombre: 'Diaz Garrido Miller Daniel', codigo: '2021115005', curso: '4035-T02', corte1: 4.0, obs1: '', corte2: 4.1, obs2: '', corte3: 4.2, obs3: '' },
+                { id: 6, nombre: 'Molina Cáceres Andrés Felipe', codigo: '2021115006', curso: '4035-T02', corte1: 3.2, obs1: '', corte2: 3.4, obs2: '', corte3: 3.6, obs3: '' },
+                { id: 7, nombre: 'Porto Ojeda Killian David', codigo: '2021115007', curso: '4035-T05', corte1: 4.6, obs1: '', corte2: 4.5, obs2: '', corte3: 4.7, obs3: '' },
+                { id: 8, nombre: 'Tejera Gutierrez Jesús David', codigo: '2021115008', curso: '4035-T02', corte1: 2.8, obs1: '', corte2: 2.9, obs2: '', corte3: 2.7, obs3: '' }
+            ],
+            courses: [
+                { id: 1, name: 'Cálculo Diferencial', code: '4035-T05' },
+                { id: 2, name: 'Cálculo Diferencial', code: '4035-T04' },
+                { id: 3, name: 'Cálculo Diferencial', code: '4035-T02' }
+            ]
+        };
+
+        function calculateWeightedAverage(student) {
+            return (student.corte1 * 0.30) + (student.corte2 * 0.30) + (student.corte3 * 0.40);
+        }
+
+        function getGradeClass(grade) {
+            if (grade <= 2.9) return 'grade-red';
+            if (grade >= 3.0 && grade <= 3.9) return 'grade-yellow';
+            return 'grade-green';
+        }
+
+        function getAverageClass(avg) {
+            if (avg <= 2.9) return 'grade-red';
+            if (avg === 3.0) return 'grade-yellow';
+            return 'grade-green';
+        }
+
+        function getObservationByGrade(grade) {
+            if (grade <= 2.9) return 'Va mal, requiere seguimiento urgente';
+            if (grade >= 3.0 && grade <= 3.9) return 'Rendimiento medio, estar pendiente';
+            return 'Va muy bien, excelente desempeño';
+        }
+
+        function categorizeStudents(courseCode = null) {
+            let studentsToAnalyze = state.students;
+            if (courseCode) {
+                studentsToAnalyze = state.students.filter(s => s.curso === courseCode);
+            }
+            
+            const low = [];
+            const medium = [];
+            const high = [];
+            const needsTracking = [];
+
+            studentsToAnalyze.forEach(s => {
+                const avg = calculateWeightedAverage(s);
+                if (avg <= 2.9) {
+                    low.push(s);
+                    needsTracking.push(s);
+                } else if (avg >= 3.0 && avg <= 3.9) {
+                    medium.push(s);
+                    needsTracking.push(s);
+                } else {
+                    high.push(s);
+                }
+            });
+
+            return { low, medium, high, needsTracking };
+        }
+
+        function renderHeader() {
+            if (state.currentPage === 'role-selection' || state.currentPage === 'login' || state.currentPage === 'student-course-input') {
+                return '';
+            }
+            return `
+                <header class="header-green text-white shadow-lg">
+                    <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+                        <div class="flex items-center">
+                            <div class="flex gap-2">
+                                <div class="flex items-center justify-center">
+                                    <span class="">
+                                        <img src="https://www.unisimon.edu.co/recursos/img/medalla2.png" alt="Unisimon Acreditado Logo" style="width:300px;height:110px">
+                                        </span>
+                                </div>
+                                <div class="flex items-center justify-center">
+                                    <span class="">
+                                    <img src="https://unisimon.edu.co/english/showimagen/showpdf/universidad-simon-bolivar-9807a.png" alt="Unisimon Logo" style="width:300px;height:110px">
+                                        </span>
+                                </div>
+                            </div>
+                        </div>
+                        <h1 class="text-lg font-bold text-center flex-1">SISTEMA DE INFORMACIÓN DE RENDIMIENTO<br>
+                            ACADÉMICO MATEMÁTICO - SIRAM</h1>
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center gap-2">
+                                <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
+                                </svg>
+                                <span class="font-semibold">${state.userName}</span>
+                            </div>
+                            <button onclick="logout()" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-300 flex items-center gap-2">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V3zm11.293 9.293a1 1 0 
+                                    001.414-1.414l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L11 10.414V14a1 1 0 102 0v-3.586l1.293 1.293z" clip-rule="evenodd"/>
+                                </svg>
+                                Cerrar Sesión
+                            </button>
+                        </div>
+                    </div>
+                </header>
+            `;
+        }
+
+        function renderFooter() {
+            if (state.currentPage === 'role-selection' || state.currentPage === 'login' || state.currentPage === 'student-course-input') {
+                return '';
+            }
+            return `
+                <footer class="footer-gray text-white mt-12">
+                    <div class="container mx-auto px-6 py-8">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                            <div>
+                                <h3 class="font-bold text-lg mb-3">Contacto</h3>
+                                <p class="text-gray-300">Email: notificacionesjudicialesbaq@unisimon.edu.co</p>
+                                <p class="text-gray-300">Tel:<br>
+                                    PBX: +57 (605) 3185510<br>
+                                    PBX +57 (605) 3444333<br>
+                                    Fax : +57 (605) 3682892
+                                    </p>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-lg mb-3">Servicios</h3>
+                                <p class="text-gray-300">Monitoreo Académico</p>
+                                <p class="text-gray-300">Seguimiento Estudiantil</p>
+                                <p class="text-gray-300">Análisis Estadístico</p>
+                                <p class="text-gray-300">CAMFI</p>
+                                <p class="text-gray-300">Asesoría</p>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-lg mb-3">Ubicación</h3>
+                                <p class="text-gray-300">Barranquilla, Colombia</p>
+                                <p class="text-gray-300">Carrera 59 No. 59-65 - Sede principal</p>
+                                <p class="text-gray-300">Carrera 54 No. 64-222 - Sede posgrado</p>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-lg mb-3">Universidad Simón Bolívar</h3>
+                                <p class="text-gray-300">Excelencia académica</p>
+                                <p class="text-gray-300">Formación integral</p>
+                            </div>
+                        </div>
+                        <div class="border-t border-gray-600 mt-6 pt-6 text-center text-gray-400">
+                            <p>&copy; 2025 Universidad Simón Bolívar - SIRAM. Todos los derechos reservados.</p>
+                        </div>
+                    </div>
+                </footer>
+            `;
+        }
+
+        function renderRoleSelection() {
+            return `
+                <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-600 to-green-800">
+                    <div class="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full fade-in">
+                        <div class="text-center mb-6">
+                            <h2 class="text-3xl font-bold text-gray-800 mb-2">Bienvenido a SIRAM</h2>
+                            <p class="text-gray-600">Sistema de Información de Rendimiento<br> Académico Matemático</p>
+                        </div>
+                        <p class="text-center text-gray-600 mb-8">Seleccione su tipo de usuario</p>
+                        <div class="space-y-4">
+                            <button onclick="selectRole('profesor')" class="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-4 px-6 rounded-lg transition duration-300 transform hover:scale-105">
+                                <svg class="w-8 h-8 inline-block mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3z"/>
+                                </svg>
+                                Profesor
+                            </button>
+                            <button onclick="selectRole('estudiante')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-lg transition duration-300 transform hover:scale-105">
+                                <svg class="w-8 h-8 inline-block mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
+                                </svg>
+                                Estudiante
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderLogin() {
+            return `
+                <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-600 to-green-800">
+                    <div class="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full fade-in">
+                        <h2 class="text-3xl font-bold text-center mb-8 text-gray-800">Iniciar Sesión</h2>
+                        <p class="text-center text-gray-600 mb-6">Ingrese como ${state.userRole === 'profesor' ? 'Profesor' : 'Estudiante'}</p>
+                        <form onsubmit="handleLogin(event)" class="space-y-6">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Usuario</label>
+                                <input type="text" id="username" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600" required>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Contraseña</label>
+                                <input type="password" id="password" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600" required>
+                            </div>
+                            <button type="submit" class="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3 px-6 rounded-lg transition duration-300">
+                                Ingresar
+                            </button>
+                            <button type="button" onclick="goBack()" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300">
+                                Volver
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStudentCourseInput() {
+            return `
+                <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-600 to-green-800">
+                    <div class="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full fade-in">
+                        <h2 class="text-3xl font-bold text-center mb-8 text-gray-800">Información del Estudiante</h2>
+                        <p class="text-center text-gray-600 mb-6">Por favor, ingrese sus datos</p>
+                        <form onsubmit="handleCourseCode(event)" class="space-y-6">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Código Estudiantil</label>
+                                <input type="text" id="studentCode" placeholder="Ejemplo: 2021115001" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600" required>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Código del Curso</label>
+                                <input type="text" id="courseCode" placeholder="Ejemplo: 4035-T05" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600" required>
+                            </div>
+                            <button type="submit" class="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3 px-6 rounded-lg transition duration-300">
+                                Continuar
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCourses() {
+            return `
+                ${renderHeader()}
+                <div class="container mx-auto px-6 py-8 min-h-screen bg-white">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-8 fade-in">Mis Cursos</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        ${state.courses.map(course => {
+                            const studentsInCourse = state.students.filter(s => s.curso === course.code).length;
+                            return `
+                            <div onclick="selectCourse(${course.id})" class="bg-white border-2 border-green-700 rounded-lg shadow-lg p-6 cursor-pointer transform transition duration-300 hover:scale-105 hover:shadow-xl fade-in">
+                                <div class="flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4 mx-auto">
+                                    <svg class="w-8 h-8 text-green-700" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3z"/>
+                                    </svg>
+                                </div>
+                                <h3 class="text-xl font-bold text-center text-gray-800 mb-2">${course.name}</h3>
+                                <p class="text-center text-gray-600 font-semibold">${course.code}</p>
+                                <div class="mt-4 text-center">
+                                    <span class="inline-block bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">
+                                        ${studentsInCourse} estudiantes
+                                    </span>
+                                </div>
+                            </div>
+                        `}).join('')}
+                    </div>
+                </div>
+                ${renderFooter()}
+            `;
+        }
+
+        function renderStudentDashboard() {
+            const currentStudent = state.students.find(s => s.codigo === state.userName);
+            if (!currentStudent) {
+                return `
+                    ${renderHeader()}
+                    <div class="container mx-auto px-6 py-8 min-h-screen bg-white">
+                        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                            <p>No se encontró información del estudiante.</p>
+                        </div>
+                    </div>
+                    ${renderFooter()}
+                `;
+            }
+
+            const course = state.courses.find(c => c.code === currentStudent.curso);
+            const avg = calculateWeightedAverage(currentStudent);
+            const courseInfo = state.courseData[currentStudent.curso];
+
+            // Clasificar el rendimiento del estudiante por corte
+            const performanceLow = [];
+            const performanceMedium = [];
+            const performanceHigh = [];
+
+            if (currentStudent.corte1 <= 2.9) performanceLow.push({ corte: '1er Corte', nota: currentStudent.corte1 });
+            else if (currentStudent.corte1 >= 3.0 && currentStudent.corte1 <= 3.9) performanceMedium.push({ corte: '1er Corte', nota: currentStudent.corte1 });
+            else performanceHigh.push({ corte: '1er Corte', nota: currentStudent.corte1 });
+
+            if (currentStudent.corte2 <= 2.9) performanceLow.push({ corte: '2do Corte', nota: currentStudent.corte2 });
+            else if (currentStudent.corte2 >= 3.0 && currentStudent.corte2 <= 3.9) performanceMedium.push({ corte: '2do Corte', nota: currentStudent.corte2 });
+            else performanceHigh.push({ corte: '2do Corte', nota: currentStudent.corte2 });
+
+            if (currentStudent.corte3 <= 2.9) performanceLow.push({ corte: '3er Corte', nota: currentStudent.corte3 });
+            else if (currentStudent.corte3 >= 3.0 && currentStudent.corte3 <= 3.9) performanceMedium.push({ corte: '3er Corte', nota: currentStudent.corte3 });
+            else performanceHigh.push({ corte: '3er Corte', nota: currentStudent.corte3 });
+
+            return `
+                ${renderHeader()}
+                <div class="container mx-auto px-6 py-8 bg-white">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-2 fade-in">Mi Información Académica</h2>
+                    <p class="text-gray-600 mb-8 text-lg">${course.name} - ${course.code}</p>
+                    
+                    <div class="bg-white border-2 border-green-700 rounded-lg shadow-lg overflow-hidden mb-8 fade-in">
+                        <div class="header-green text-white px-6 py-4">
+                            <h3 class="text-xl font-bold">Mis Calificaciones</h3>
+                        </div>
+                        <div class="overflow-x-auto p-6">
+                            <table class="w-full">
+                                <thead class="bg-gray-100">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-sm font-bold text-gray-700">Nombre</th>
+                                        <th class="px-6 py-3 text-left text-sm font-bold text-gray-700">Código</th>
+                                        <th class="px-6 py-3 text-left text-sm font-bold text-gray-700">Curso</th>
+                                        <th class="px-6 py-3 text-left text-sm font-bold text-gray-700">1er Corte</th>
+                                        <th class="px-6 py-3 text-left text-sm font-bold text-gray-700">2do Corte</th>
+                                        <th class="px-6 py-3 text-left text-sm font-bold text-gray-700">3er Corte</th>
+                                        <th class="px-6 py-3 text-left text-sm font-bold text-gray-700">Promedio</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="border-t">
+                                        <td class="px-6 py-4 text-sm font-semibold">${currentStudent.nombre}</td>
+                                        <td class="px-6 py-4 text-sm">${currentStudent.codigo}</td>
+                                        <td class="px-6 py-4 text-sm">${currentStudent.curso}</td>
+                                        <td class="px-6 py-4">
+                                            <div class="w-16 px-2 py-1 rounded text-center ${getGradeClass(currentStudent.corte1)}">
+                                                ${currentStudent.corte1.toFixed(1)}
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4">
+                                            <div class="w-16 px-2 py-1 rounded text-center ${getGradeClass(currentStudent.corte2)}">
+                                                ${currentStudent.corte2.toFixed(1)}
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4">
+                                            <div class="w-16 px-2 py-1 rounded text-center ${getGradeClass(currentStudent.corte3)}">
+                                                ${currentStudent.corte3.toFixed(1)}
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4">
+                                            <div class="w-16 px-2 py-1 rounded text-center ${getAverageClass(avg)}">
+                                                ${avg.toFixed(2)}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr class="bg-gray-50">
+                                        <td colspan="7" class="px-6 py-4">
+                                            <div class="text-sm">
+                                                <p class="font-bold text-gray-700 mb-2">Observaciones:</p>
+                                                <p class="text-gray-600"><strong>1er Corte:</strong> ${currentStudent.obs1 || getObservationByGrade(currentStudent.corte1)}</p>
+                                                <p class="text-gray-600"><strong>2do Corte:</strong> ${currentStudent.obs2 || getObservationByGrade(currentStudent.corte2)}</p>
+                                                <p class="text-gray-600"><strong>3er Corte:</strong> ${currentStudent.obs3 || getObservationByGrade(currentStudent.corte3)}</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border-2 border-green-700 rounded-lg shadow-lg p-6 mb-8 fade-in">
+                        <h3 class="text-2xl font-bold text-gray-800 mb-6">Mi Dashboard Personal</h3>
+                        
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                            <div class="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                                <h4 class="text-lg font-bold text-gray-800 mb-4">Mis Notas por Corte</h4>
+                                <canvas id="studentGradesChart"></canvas>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                                <h4 class="text-lg font-bold text-gray-800 mb-4">Promedio General</h4>
+                                <div class="flex items-center justify-center h-48">
+                                    <div class="text-center">
+                                        <div class="text-6xl font-bold ${getAverageClass(avg)} inline-block px-8 py-4 rounded-lg">
+                                            ${avg.toFixed(2)}
+                                        </div>
+                                        <p class="mt-4 text-gray-600 text-lg">
+                                            ${avg >= 3.0 ? '¡Aprobado! 🎉' : 'Necesitas mejorar 📚'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-lg p-6 text-white">
+                                <h4 class="text-lg font-semibold mb-3">⚠️ Bajo Rendimiento</h4>
+                                <p class="text-3xl font-bold mb-2">${performanceLow.length}</p>
+                                ${performanceLow.length > 0 ? `
+                                    <div class="bg-white bg-opacity-20 rounded p-3 text-sm mt-3">
+                                        ${performanceLow.map(p => `<p class="mb-1">• ${p.corte}: ${p.nota.toFixed(1)}</p>`).join('')}
+                                    </div>
+                                ` : '<p class="text-sm">¡Ningún corte en esta categoría!</p>'}
+                            </div>
+                            <div class="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg p-6 text-white">
+                                <h4 class="text-lg font-semibold mb-3">📊 Rendimiento Medio</h4>
+                                <p class="text-3xl font-bold mb-2">${performanceMedium.length}</p>
+                                ${performanceMedium.length > 0 ? `
+                                    <div class="bg-white bg-opacity-20 rounded p-3 text-sm mt-3">
+                                        ${performanceMedium.map(p => `<p class="mb-1">• ${p.corte}: ${p.nota.toFixed(1)}</p>`).join('')}
+                                    </div>
+                                ` : '<p class="text-sm">¡Ningún corte en esta categoría!</p>'}
+                            </div>
+                            <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-6 text-white">
+                                <h4 class="text-lg font-semibold mb-3">🌟 Alto Rendimiento</h4>
+                                <p class="text-3xl font-bold mb-2">${performanceHigh.length}</p>
+                                ${performanceHigh.length > 0 ? `
+                                    <div class="bg-white bg-opacity-20 rounded p-3 text-sm mt-3">
+                                        ${performanceHigh.map(p => `<p class="mb-1">• ${p.corte}: ${p.nota.toFixed(1)}</p>`).join('')}
+                                    </div>
+                                ` : '<p class="text-sm">¡Ningún corte en esta categoría!</p>'}
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="bg-blue-50 border-l-4 border-blue-600 rounded-lg p-6">
+                                <h4 class="text-lg font-bold text-blue-800 mb-3">📝 Exámenes</h4>
+                                <p class="text-gray-700 mb-2">Próximo: ${courseInfo.examDate}</p>
+                                <p class="text-sm text-gray-600">${courseInfo.examTopic}</p>
+                            </div>
+                            <div class="bg-green-50 border-l-4 border-green-600 rounded-lg p-6">
+                                <h4 class="text-lg font-bold text-green-800 mb-3">✏️ Quices</h4>
+                                <p class="text-gray-700 mb-2">Realizados: ${courseInfo.quicesCompleted}/${courseInfo.quicesTotal}</p>
+                                <p class="text-sm text-gray-600">Próximo: ${courseInfo.quicesNext}</p>
+                            </div>
+                            <div class="bg-purple-50 border-l-4 border-purple-600 rounded-lg p-6">
+                                <h4 class="text-lg font-bold text-purple-800 mb-3">📚 Ejercicios</h4>
+                                <p class="text-gray-700 mb-2">Banco: ${courseInfo.exercisesBank} ejercicios</p>
+                                <p class="text-sm text-gray-600">Temas variados disponibles</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ${renderFooter()}
+            `;
+        }
+
+        function renderDashboard(courseCode, isEditable) {
+            const categories = categorizeStudents(courseCode);
+            const studentsInCourse = state.students.filter(s => s.curso === courseCode);
+            
+            const avgCourse = studentsInCourse.reduce((sum, s) => sum + calculateWeightedAverage(s), 0) / studentsInCourse.length;
+            const passed = studentsInCourse.filter(s => calculateWeightedAverage(s) >= 3.0).length;
+            const failed = studentsInCourse.filter(s => calculateWeightedAverage(s) <= 2.9).length;
+
+            return `
+                <div class="bg-white border-2 border-green-700 rounded-lg shadow-lg p-6 mb-8 fade-in">
+                    <h3 class="text-2xl font-bold text-gray-800 mb-6">Dashboard Académico</h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                        <div onclick="toggleBox('tracking')" class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg p-6 text-white cursor-pointer hover:shadow-xl transition">
+                            <h4 class="text-lg font-semibold mb-2">Estudiantes con Seguimiento</h4>
+                            <p class="text-4xl font-bold">${categories.needsTracking.length}</p>
+                            ${state.expandedBox === 'tracking' ? `
+                                <div class="mt-4 bg-white bg-opacity-20 rounded p-3 text-sm max-h-60 overflow-y-auto">
+                                    ${categories.needsTracking.map(s => `<p class="mb-1">• ${s.nombre} (${calculateWeightedAverage(s).toFixed(2)})</p>`).join('') || '<p>No hay estudiantes</p>'}
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div onclick="toggleBox('low')" class="bg-gradient-to-br from-red-500 to-red-600 rounded-lg p-6 text-white cursor-pointer hover:shadow-xl transition">
+                            <h4 class="text-lg font-semibold mb-2">Bajo Rendimiento</h4>
+                            <p class="text-4xl font-bold">${categories.low.length}</p>
+                            ${state.expandedBox === 'low' ? `
+                                <div class="mt-4 bg-white bg-opacity-20 rounded p-3 text-sm max-h-60 overflow-y-auto">
+                                    ${categories.low.map(s => `<p class="mb-1">• ${s.nombre} (${calculateWeightedAverage(s).toFixed(2)})</p>`).join('') || '<p>No hay estudiantes</p>'}
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div onclick="toggleBox('medium')" class="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg p-6 text-white cursor-pointer hover:shadow-xl transition">
+                            <h4 class="text-lg font-semibold mb-2">Rendimiento Medio</h4>
+                            <p class="text-4xl font-bold">${categories.medium.length}</p>
+                            ${state.expandedBox === 'medium' ? `
+                                <div class="mt-4 bg-white bg-opacity-20 rounded p-3 text-sm max-h-60 overflow-y-auto">
+                                    ${categories.medium.map(s => `<p class="mb-1">• ${s.nombre} (${calculateWeightedAverage(s).toFixed(2)})</p>`).join('') || '<p>No hay estudiantes</p>'}
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div onclick="toggleBox('high')" class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-6 text-white cursor-pointer hover:shadow-xl transition">
+                            <h4 class="text-lg font-semibold mb-2">Alto Rendimiento</h4>
+                            <p class="text-4xl font-bold">${categories.high.length}</p>
+                            ${state.expandedBox === 'high' ? `
+                                <div class="mt-4 bg-white bg-opacity-20 rounded p-3 text-sm max-h-60 overflow-y-auto">
+                                    ${categories.high.map(s => `<p class="mb-1">• ${s.nombre} (${calculateWeightedAverage(s).toFixed(2)})</p>`).join('') || '<p>No hay estudiantes</p>'}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                        <div onclick="toggleBox('passed')" class="bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg p-6 text-white cursor-pointer hover:shadow-xl transition">
+                            <h4 class="text-lg font-semibold mb-2">Aprobados</h4>
+                            <p class="text-4xl font-bold">${passed}</p>
+                            ${state.expandedBox === 'passed' ? `
+                                <div class="mt-4 bg-white bg-opacity-20 rounded p-3 text-sm max-h-60 overflow-y-auto">
+                                    ${studentsInCourse.filter(s => calculateWeightedAverage(s) >= 3.0).map(s => `<p class="mb-1">• ${s.nombre} (${calculateWeightedAverage(s).toFixed(2)})</p>`).join('') || '<p>No hay estudiantes</p>'}
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div onclick="toggleBox('failed')" class="bg-gradient-to-br from-pink-500 to-pink-600 rounded-lg p-6 text-white cursor-pointer hover:shadow-xl transition">
+                            <h4 class="text-lg font-semibold mb-2">Reprobados</h4>
+                            <p class="text-4xl font-bold">${failed}</p>
+                            ${state.expandedBox === 'failed' ? `
+                                <div class="mt-4 bg-white bg-opacity-20 rounded p-3 text-sm max-h-60 overflow-y-auto">
+                                    ${studentsInCourse.filter(s => calculateWeightedAverage(s) <= 2.9).map(s => `<p class="mb-1">• ${s.nombre} (${calculateWeightedAverage(s).toFixed(2)})</p>`).join('') || '<p>No hay estudiantes</p>'}
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-6 text-white">
+                            <h4 class="text-lg font-semibold mb-2">Promedio General</h4>
+                            <p class="text-4xl font-bold">${avgCourse.toFixed(2)}</p>
+                        </div>
+                        <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-6 text-white">
+                            <h4 class="text-lg font-semibold mb-2">Tasa Éxito</h4>
+                            <p class="text-4xl font-bold">${((passed/studentsInCourse.length)*100).toFixed(0)}%</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                        <div class="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                            <h4 class="text-lg font-bold text-gray-800 mb-4">Progreso por Cortes</h4>
+                            <canvas id="progressChart"></canvas>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                            <h4 class="text-lg font-bold text-gray-800 mb-4">Distribución de Notas</h4>
+                            <canvas id="distributionChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="bg-blue-50 border-l-4 border-blue-600 rounded-lg p-6">
+                            <h4 class="text-lg font-bold text-blue-800 mb-3">📝 Exámenes</h4>
+                            <p class="text-gray-700 mb-2">Próximo: 25 de Octubre</p>
+                            <p class="text-sm text-gray-600">Derivadas e integrales</p>
+                        </div>
+                        <div class="bg-green-50 border-l-4 border-green-600 rounded-lg p-6">
+                            <h4 class="text-lg font-bold text-green-800 mb-3">✏️ Quices</h4>
+                            <p class="text-gray-700 mb-2">Realizados: 6/8</p>
+                            <p class="text-sm text-gray-600">Próximo: 22 de Octubre</p>
+                        </div>
+                        <div class="bg-purple-50 border-l-4 border-purple-600 rounded-lg p-6">
+                            <h4 class="text-lg font-bold text-purple-800 mb-3">📚 Ejercicios</h4>
+                            <p class="text-gray-700 mb-2">Banco: 150 ejercicios</p>
+                            <p class="text-sm text-gray-600">Temas variados disponibles</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCourseDetail() {
+            const course = state.courses.find(c => c.id === state.selectedCourse);
+            const studentsInCourse = state.students.filter(s => s.curso === course.code);
+            
+            return `
+                ${renderHeader()}
+                <div class="container mx-auto px-6 py-8 bg-white">
+                    <button onclick="backToCourses()" class="mb-6 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
+                        ← Volver a Cursos
+                    </button>
+                    <h2 class="text-3xl font-bold text-gray-800 mb-2 fade-in">${course.name}</h2>
+                    <p class="text-gray-600 mb-8 text-lg">${course.code}</p>
+                    
+                    <div class="bg-white border-2 border-green-700 rounded-lg shadow-lg overflow-hidden mb-8 fade-in">
+                        <div class="header-green text-white px-6 py-4">
+                            <h3 class="text-xl font-bold">Lista de Estudiantes</h3>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-100">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Nombre</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Código</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">1er Corte</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Observaciones</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">2do Corte</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Observaciones</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">3er Corte</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Observaciones</th>
+                                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Promedio Ponderado Semestre</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-200">
+                                    ${studentsInCourse.map(student => {
+                                        const avg = calculateWeightedAverage(student);
+                                        return `
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-3 text-xs text-gray-800">${student.nombre}</td>
+                                            <td class="px-4 py-3 text-xs text-gray-800">${student.codigo}</td>
+                                            <td class="px-4 py-3">
+                                                <input type="number" step="0.1" min="0" max="5" value="${student.corte1}" 
+                                                    onchange="updateGrade(${student.id}, 'corte1', this.value)"
+                                                    class="w-16 px-2 py-1 border border-gray-300 rounded text-center ${getGradeClass(student.corte1)}">
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <input type="text" value="${student.obs1 || getObservationByGrade(student.corte1)}"
+                                                    onchange="updateField(${student.id}, 'obs1', this.value)"
+                                                    class="w-32 px-2 py-1 border border-gray-300 rounded text-xs">
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <input type="number" step="0.1" min="0" max="5" value="${student.corte2}"
+                                                    onchange="updateGrade(${student.id}, 'corte2', this.value)"
+                                                    class="w-16 px-2 py-1 border border-gray-300 rounded text-center ${getGradeClass(student.corte2)}">
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <input type="text" value="${student.obs2 || getObservationByGrade(student.corte2)}"
+                                                    onchange="updateField(${student.id}, 'obs2', this.value)"
+                                                    class="w-32 px-2 py-1 border border-gray-300 rounded text-xs">
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <input type="number" step="0.1" min="0" max="5" value="${student.corte3}"
+                                                    onchange="updateGrade(${student.id}, 'corte3', this.value)"
+                                                    class="w-16 px-2 py-1 border border-gray-300 rounded text-center ${getGradeClass(student.corte3)}">
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <input type="text" value="${student.obs3 || getObservationByGrade(student.corte3)}"
+                                                    onchange="updateField(${student.id}, 'obs3', this.value)"
+                                                    class="w-32 px-2 py-1 border border-gray-300 rounded text-xs">
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <div class="w-16 px-2 py-1 rounded text-center ${getAverageClass(avg)}">
+                                                    ${avg.toFixed(2)}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    `}).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    ${renderDashboard(course.code, true)}
+                </div>
+                ${renderFooter()}
+            `;
+        }
+
+        function selectRole(role) {
+            state.userRole = role;
+            state.currentPage = 'login';
+            render();
+        }
+
+        function handleLogin(event) {
+            event.preventDefault();
+            const username = document.getElementById('username').value;
+            state.userName = username;
+            
+            if (state.userRole === 'estudiante') {
+                state.currentPage = 'student-course-input';
+            } else {
+                state.currentPage = 'courses';
+            }
+            render();
+        }
+
+        function handleCourseCode(event) {
+            event.preventDefault();
+            const studentCode = document.getElementById('studentCode').value.trim();
+            const courseCode = document.getElementById('courseCode').value.trim();
+            
+            const courseExists = state.courses.find(c => c.code === courseCode);
+            if (!courseExists) {
+                alert('Código de curso no válido. Por favor, intente de nuevo.');
+                return;
+            }
+            
+            const student = state.students.find(s => s.codigo === studentCode);
+            if (!student) {
+                alert('Código estudiantil no encontrado. Por favor, verifique e intente de nuevo.');
+                return;
+            }
+            
+            if (student.curso !== courseCode) {
+                alert('Este código estudiantil no está matriculado en el curso especificado.');
+                return;
+            }
+            
+            state.userName = studentCode;
+            state.studentCourseCode = courseCode;
+            state.currentPage = 'student-dashboard';
+            render();
+        }
+
+        function selectCourse(courseId) {
+            state.selectedCourse = courseId;
+            state.currentPage = 'course-detail';
+            render();
+        }
+
+        function backToCourses() {
+            state.currentPage = 'courses';
+            state.expandedBox = null;
+            render();
+        }
+
+        function goBack() {
+            state.currentPage = 'role-selection';
+            state.userRole = null;
+            render();
+        }
+
+        function logout() {
+            state.currentPage = 'role-selection';
+            state.userRole = null;
+            state.userName = '';
+            state.selectedCourse = null;
+            state.studentCourseCode = '';
+            state.expandedBox = null;
+            render();
+        }
+
+        function updateGrade(studentId, field, value) {
+            const student = state.students.find(s => s.id === studentId);
+            if (student) {
+                student[field] = parseFloat(value);
+                render();
+            }
+        }
+
+        function updateField(studentId, field, value) {
+            const student = state.students.find(s => s.id === studentId);
+            if (student) {
+                student[field] = value;
+            }
+        }
+
+        function updateCourseData(courseCode, field, value) {
+            if (state.courseData[courseCode]) {
+                if (field === 'quicesCompleted' || field === 'exercisesBank') {
+                    state.courseData[courseCode][field] = parseInt(value);
+                } else {
+                    state.courseData[courseCode][field] = value;
+                }
+            }
+        }
+
+        function toggleBox(boxName) {
+            if (state.expandedBox === boxName) {
+                state.expandedBox = null;
+            } else {
+                state.expandedBox = boxName;
+            }
+            render();
+        }
+
+        function createCharts() {
+            setTimeout(() => {
+                const progressCtx = document.getElementById('progressChart');
+                if (progressCtx) {
+                    const courseCode = state.userRole === 'estudiante' ? state.studentCourseCode : state.courses.find(c => c.id === state.selectedCourse).code;
+                    const studentsInCourse = state.students.filter(s => s.curso === courseCode);
+                    
+                    new Chart(progressCtx, {
+                        type: 'line',
+                        data: {
+                            labels: ['Corte 1', 'Corte 2', 'Corte 3'],
+                            datasets: [{
+                                label: 'Promedio del Curso',
+                                data: [
+                                    studentsInCourse.reduce((sum, s) => sum + s.corte1, 0) / studentsInCourse.length,
+                                    studentsInCourse.reduce((sum, s) => sum + s.corte2, 0) / studentsInCourse.length,
+                                    studentsInCourse.reduce((sum, s) => sum + s.corte3, 0) / studentsInCourse.length
+                                ],
+                                borderColor: 'rgb(34, 197, 94)',
+                                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    max: 5
+                                }
+                            }
+                        }
+                    });
+                }
+
+                const distributionCtx = document.getElementById('distributionChart');
+                if (distributionCtx) {
+                    const courseCode = state.userRole === 'estudiante' ? state.studentCourseCode : state.courses.find(c => c.id === state.selectedCourse).code;
+                    const studentsInCourse = state.students.filter(s => s.curso === courseCode);
+                    
+                    const ranges = { '0-2.9': 0, '3.0-3.9': 0, '4.0-5.0': 0 };
+                    studentsInCourse.forEach(s => {
+                        const avg = calculateWeightedAverage(s);
+                        if (avg <= 2.9) ranges['0-2.9']++;
+                        else if (avg >= 3.0 && avg <= 3.9) ranges['3.0-3.9']++;
+                        else ranges['4.0-5.0']++;
+                    });
+
+                    new Chart(distributionCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: ['0-2.9 (Bajo)', '3.0-3.9 (Medio)', '4.0-5.0 (Alto)'],
+                            datasets: [{
+                                label: 'Estudiantes',
+                                data: Object.values(ranges),
+                                backgroundColor: [
+                                    'rgba(239, 68, 68, 0.8)',
+                                    'rgba(251, 191, 36, 0.8)',
+                                    'rgba(34, 197, 94, 0.8)'
+                                ],
+                                borderColor: [
+                                    'rgb(239, 68, 68)',
+                                    'rgb(251, 191, 36)',
+                                    'rgb(34, 197, 94)'
+                                ],
+                                borderWidth: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        stepSize: 1
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                const studentGradesCtx = document.getElementById('studentGradesChart');
+                if (studentGradesCtx) {
+                    const currentStudent = state.students.find(s => s.codigo === state.userName);
+                    if (currentStudent) {
+                        new Chart(studentGradesCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: ['1er Corte', '2do Corte', '3er Corte'],
+                                datasets: [{
+                                    label: 'Mis Notas',
+                                    data: [currentStudent.corte1, currentStudent.corte2, currentStudent.corte3],
+                                    backgroundColor: [
+                                        currentStudent.corte1 <= 2.9 ? 'rgba(239, 68, 68, 0.8)' : currentStudent.corte1 <= 3.9 ? 'rgba(251, 191, 36, 0.8)' : 'rgba(34, 197, 94, 0.8)',
+                                        currentStudent.corte2 <= 2.9 ? 'rgba(239, 68, 68, 0.8)' : currentStudent.corte2 <= 3.9 ? 'rgba(251, 191, 36, 0.8)' : 'rgba(34, 197, 94, 0.8)',
+                                        currentStudent.corte3 <= 2.9 ? 'rgba(239, 68, 68, 0.8)' : currentStudent.corte3 <= 3.9 ? 'rgba(251, 191, 36, 0.8)' : 'rgba(34, 197, 94, 0.8)'
+                                    ],
+                                    borderColor: [
+                                        currentStudent.corte1 <= 2.9 ? 'rgb(239, 68, 68)' : currentStudent.corte1 <= 3.9 ? 'rgb(251, 191, 36)' : 'rgb(34, 197, 94)',
+                                        currentStudent.corte2 <= 2.9 ? 'rgb(239, 68, 68)' : currentStudent.corte2 <= 3.9 ? 'rgb(251, 191, 36)' : 'rgb(34, 197, 94)',
+                                        currentStudent.corte3 <= 2.9 ? 'rgb(239, 68, 68)' : currentStudent.corte3 <= 3.9 ? 'rgb(251, 191, 36)' : 'rgb(34, 197, 94)'
+                                    ],
+                                    borderWidth: 2
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        max: 5
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+            }, 100);
+        }
+
+        function render() {
+            const app = document.getElementById('app');
+            
+            switch(state.currentPage) {
+                case 'role-selection':
+                    app.innerHTML = renderRoleSelection();
+                    break;
+                case 'login':
+                    app.innerHTML = renderLogin();
+                    break;
+                case 'student-course-input':
+                    app.innerHTML = renderStudentCourseInput();
+                    break;
+                case 'courses':
+                    app.innerHTML = renderCourses();
+                    break;
+                case 'course-detail':
+                    app.innerHTML = renderCourseDetail();
+                    createCharts();
+                    break;
+                case 'student-dashboard':
+                    app.innerHTML = renderStudentDashboard();
+                    createCharts();
+                    break;
+            }
+        }
+        render();
+    </script>
+</body>
+</html>
